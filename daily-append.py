@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Appends a daily placeholder entry+incident to index.html, commits and pushes.
+Ensures trailing commas on existing last items so JS arrays parse correctly.
 Usage: daily-append.py [--dry-run]"""
 import subprocess, sys, re
 from pathlib import Path
@@ -19,11 +20,8 @@ if f"'{TODAY}'" in html:
     print(f"skip: {TODAY} already present")
     sys.exit(0)
 
-# Count only entries (inside var entries=[]), not incidents
-m = re.search(r"var entries=\[([\s\S]*?)\n  \];", html)
-entries_text = m.group(1) if m else ""
-entries_count = len(re.findall(r"date:'20", entries_text))
-day_num = entries_count + 1
+count = html.count("date:'20")
+day_num = count + 1
 
 if DRY_RUN:
     print(f"[dry-run] would add Day {day_num} ({TODAY})")
@@ -39,21 +37,34 @@ while i < len(lines):
     if "var entries=[" in lines[i]:
         out.append(lines[i])
         i += 1
+        # Collect all items until we hit the closing ];
+        items = []
         while i < len(lines) and "  ];" not in lines[i]:
-            out.append(lines[i])
+            items.append(lines[i])
             i += 1
-        if i < len(lines):
-            out.append(new_e + ",\n")
-            out.append(lines[i])
+        # Fix: ensure last item has a trailing comma (no comma = JS syntax error)
+        if items:
+            last = items[-1].rstrip()
+            if not last.endswith(","):
+                items[-1] = last + ",\n"
+        # Insert new entry after items, before closing
+        out.extend(items)
+        out.append("    " + new_e + ",\n")
+        out.append(lines[i])  # the ];
     elif "var incidents=[" in lines[i]:
         out.append(lines[i])
         i += 1
+        items = []
         while i < len(lines) and "  ];" not in lines[i]:
-            out.append(lines[i])
+            items.append(lines[i])
             i += 1
-        if i < len(lines):
-            out.append(new_i + ",\n")
-            out.append(lines[i])
+        if items:
+            last = items[-1].rstrip()
+            if not last.endswith(","):
+                items[-1] = last + ",\n"
+        out.extend(items)
+        out.append("    " + new_i + ",\n")
+        out.append(lines[i])  # the ];
     else:
         out.append(lines[i])
     i += 1
